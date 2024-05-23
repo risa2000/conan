@@ -97,8 +97,7 @@ class VCVars:
             vcvars_ver = {"v140": "14.0",
                           "v141": "14.1",
                           "v142": "14.2",
-                          "v143": "14.3",
-                          "v144": "14.4"}.get(toolset_version)
+                          "v143": ["14.3", "14.4"]}.get(toolset_version)
         else:
             vs_version = vs_ide_version(conanfile)
             vcvars_ver = _vcvars_vers(conanfile, compiler, vs_version)
@@ -112,10 +111,7 @@ class VCVars:
                                 winsdk_version=None, vcvars_ver=vcvars_ver,
                                 vs_install_path=vs_install_path)
 
-        content = textwrap.dedent("""\
-            @echo off
-            {}
-            """.format(vcvars))
+        content = textwrap.dedent("@echo off\n{}".format(vcvars))
         from conan.tools.env.environment import create_env_script
         create_env_script(conanfile, content, CONAN_VCVARS_FILE, scope)
 
@@ -169,19 +165,33 @@ def vcvars_command(version, architecture=None, platform_type=None, winsdk_versio
     # TODO: This comes from conans/client/tools/win.py vcvars_command()
     cmd = []
     if start_dir_cd:
-        cmd.append('set "VSCMD_START_DIR=%CD%" &&')
+        cmd.append('set "VSCMD_START_DIR=%CD%"')
 
+    if not isinstance(vcvars_ver, list):
+        vcvars_vers = [vcvars_ver]
+    else:
+        vcvars_vers = vcvars_ver
+
+    count = 1
+    for ver in vcvars_vers:
     # The "call" is useful in case it is called from another .bat script
-    cmd.append('call "%s" ' % _vcvars_path(version, vs_install_path))
-    if architecture:
-        cmd.append(architecture)
-    if platform_type:
-        cmd.append(platform_type)
-    if winsdk_version:
-        cmd.append(winsdk_version)
-    if vcvars_ver:
-        cmd.append("-vcvars_ver=%s" % vcvars_ver)
-    return " ".join(cmd)
+        if count > 1:
+            cmd.append('if "%errorlevel%" NEQ "0" (')
+        call_cmd = []
+        call_cmd.append('call "%s" ' % _vcvars_path(version, vs_install_path))
+        if architecture:
+            call_cmd.append(architecture)
+        if platform_type:
+            call_cmd.append(platform_type)
+        if winsdk_version:
+            call_cmd.append(winsdk_version)
+        if vcvars_ver:
+            call_cmd.append("-vcvars_ver=%s" % ver)
+            cmd.append(" ".join(call_cmd))
+        if count > 1:
+            cmd.append(')')
+        count += 1
+    return "\n".join(cmd)
 
 
 def _vcvars_path(version, vs_install_path):
@@ -248,13 +258,17 @@ def _vcvars_vers(conanfile, compiler, vs_version):
             vcvars_ver = {"v140": "14.0",
                           "v141": "14.1",
                           "v142": "14.2",
-                          "v143": "14.3"}.get(toolset)
+                          "v143": ["14.3", "14.4"]}.get(toolset)
     else:
         assert compiler == "msvc"
         # Code similar to CMakeToolchain toolset one
         compiler_version = str(conanfile.settings.compiler.version)
         # The equivalent of compiler 192 is toolset 14.2
         vcvars_ver = "14.{}".format(compiler_version[-1])
+        if compiler_version == "193":
+            last_digit = int(compiler_version[-1])
+            future_version_count = 2
+            vcvars_ver = ["14.{}".format(i) for i in range(last_digit, last_digit + future_version_count)]
     return vcvars_ver
 
 
