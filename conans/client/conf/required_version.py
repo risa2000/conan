@@ -1,3 +1,4 @@
+import re
 import six
 
 from conans.client.cache.cache import ClientCache
@@ -7,7 +8,10 @@ from conans.errors import ConanException
 
 
 def validate_conan_version(required_range):
-    result = satisfies(client_version, required_range, loose=True, include_prerelease=True)
+    # fix to make semver work with .post<#> version modifiers
+    post_ver = re.match(r"(?P<version>.*)(\.post(?P<post>[0-9]+))$", client_version)
+    local_version = post_ver.groupdict()["version"] if post_ver else client_version
+    result = satisfies(local_version, required_range, loose=True, include_prerelease=True)
     if not result:
         raise ConanException("Current Conan version ({}) does not satisfy "
                              "the defined one ({}).".format(client_version, required_range))
